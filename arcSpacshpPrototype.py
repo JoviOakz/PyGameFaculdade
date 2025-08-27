@@ -5,9 +5,9 @@ import random
 pygame.init()
 
 # ----- Screen config -----
-WIDTH, HEIGHT = 1240, 760
+WIDTH, HEIGHT = 1920, 1080
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Parallax - Spaceship Arcade 2.5D")
+pygame.display.set_caption('Parallax - Spaceship Arcade 2.5D')
 
 # ----- Colors -----
 WHITE = (255, 255, 255)
@@ -19,7 +19,9 @@ LIGHT_BLUE = (0, 200, 200)
 clock = pygame.time.Clock()
 
 # ----- Spaceship config -----
-ship = pygame.Rect(100, HEIGHT // 2, 40, 20)
+ship_img = pygame.image.load('Spaceship2.0Frame.png').convert_alpha()
+ship_img = pygame.transform.scale(ship_img, (141, 90))
+ship = pygame.Rect(50, (HEIGHT / 2) - (90 / 2), 141, 90)
 ship_speed = 5
 
 # ----- Bullets -----
@@ -28,7 +30,7 @@ bullet_speed = 10
 
 # ----- Stars (Parallax) -----
 stars = []
-for i in range(50):
+for i in range(80):
     x = random.randint(0, WIDTH)
     y = random.randint(0, HEIGHT)
     speed = random.choice([1, 2, 3])
@@ -55,7 +57,7 @@ while True:
                 sys.exit()
                 
             if event.key == pygame.K_SPACE:
-                bullets.append(pygame.Rect(ship.right, ship.centery - 2, 10, 4))
+                bullets.append(pygame.Rect(ship.right - 55, ship.centery - 2, 12, 4))
 
     # ----- Spaceship movement -----
     keys = pygame.key.get_pressed()
@@ -83,24 +85,24 @@ while True:
 
     # ----- Enemy spawn -----
     spawn_timer += 1
-    if spawn_timer > 60:  # every 1 second
+    if spawn_timer > 60:
         spawn_timer = 0
         y = random.randint(50, HEIGHT - 50)
-        enemies.append({"x": WIDTH + 50, "y": y, "size": 10, "speed": 2})
+        enemies.append({'x': WIDTH + 50, 'y': y, 'size': 10, 'speed': 2})
 
     # ----- Enemy movement and growth -----
     for enemy in enemies[:]:
-        enemy["x"] -= enemy["speed"]
-        enemy["size"] += 0.1  # grows to simulate coming closer
+        enemy['x'] -= enemy['speed']
+        enemy['size'] += 0.1
 
         # ----- Remove enemy out of screen -----
-        if enemy["x"] < -50:
+        if enemy['x'] < -50:
             enemies.remove(enemy)
 
     # ----- Bullets collision -----
     for bullet in bullets[:]:
         for enemy in enemies[:]:
-            enemy_rect = pygame.Rect(enemy["x"], enemy["y"], enemy["size"], enemy["size"])
+            enemy_rect = pygame.Rect(enemy['x'], enemy['y'], enemy['size'], enemy['size'])
             if bullet.colliderect(enemy_rect):
                 bullets.remove(bullet)
                 enemies.remove(enemy)
@@ -114,7 +116,7 @@ while True:
         pygame.draw.circle(screen, WHITE, (star[0], star[1]), star[3])
 
     # ----- Spaceship -----
-    pygame.draw.rect(screen, LIGHT_BLUE, ship)
+    screen.blit(ship_img, ship)
 
     # ----- Bullets -----
     for bullet in bullets:
@@ -122,6 +124,6 @@ while True:
 
     # ----- Enemies -----
     for enemy in enemies:
-        pygame.draw.rect(screen, RED, (enemy["x"], enemy["y"], enemy["size"], enemy["size"]))
+        pygame.draw.rect(screen, RED, (enemy['x'], enemy['y'], enemy['size'], enemy['size']))
 
     pygame.display.flip()
