@@ -21,12 +21,65 @@ clock = pygame.time.Clock()
 
 # ----- Assets -----
 ship1_img = pygame.image.load("SpaceshipFrame.png").convert_alpha()
-ship1_img = pygame.transform.scale(ship1_img, (141, 90))
-
 ship2_img = pygame.image.load("Spaceship2Frame.png").convert_alpha()
-ship2_img = pygame.transform.scale(ship2_img, (141, 90))
 
-# ----- Game states -----
+# =========================================
+# ----------- SHIP CLASS ------------------
+# =========================================
+class Ship:
+    def __init__(self, img, speed, bullet_color, bullet_speed, size, shoot_type, shoot_cooldown):
+        self.img = pygame.transform.scale(img, size)
+        self.rect = self.img.get_rect()
+        self.rect.x = 50
+        self.rect.y = (HEIGHT // 2) - (self.rect.height // 2)
+        self.speed = speed
+        self.bullet_color = bullet_color
+        self.bullet_speed = bullet_speed
+        self.shoot_type = shoot_type              # "bullet" ou "laser"
+        self.shoot_cooldown = shoot_cooldown      # em ms
+        self.last_shot_time = 0                   # controla o cooldown
+
+    def move(self, keys):
+        if keys[pygame.K_UP]:
+            self.rect.y -= self.speed
+        if keys[pygame.K_DOWN]:
+            self.rect.y += self.speed
+        if keys[pygame.K_LEFT]:
+            self.rect.x -= self.speed
+        if keys[pygame.K_RIGHT]:
+            self.rect.x += self.speed
+
+        # Correção dinâmica de limites com base no tamanho da nave
+        margin = 185
+        margin_y = int(self.rect.height * 0.98)
+
+        play_area = pygame.Rect(
+            margin,
+            margin_y,
+            WIDTH - 4 * margin,
+            HEIGHT - 2 * margin_y
+        )
+        self.rect.clamp_ip(play_area)
+
+    def shoot(self):
+        now = pygame.time.get_ticks()
+        if now - self.last_shot_time < self.shoot_cooldown:
+            return None  # ainda em cooldown
+
+        self.last_shot_time = now
+
+        if self.shoot_type == "bullet":
+            bullet = pygame.Rect(self.rect.right - 20, self.rect.centery - 3, 20, 6)
+            return {"type": "bullet", "rect": bullet}
+
+        elif self.shoot_type == "laser":
+            # Laser atravessa a tela e dura 1s
+            laser = pygame.Rect(self.rect.right - 10, self.rect.top+10, WIDTH, self.rect.height-20)
+            return {"type": "laser", "rect": laser, "expire": now + 1000}
+
+# =========================================
+# ----------- GAME STATES -----------------
+# =========================================
 MENU = "menu"
 CHARACTER_SELECT = "character_select"
 GAME = "game"
@@ -34,13 +87,31 @@ PAUSE = "pause"
 game_state = MENU
 
 # ----- Player config -----
-ship_img = None
-ship = pygame.Rect(50, (HEIGHT // 2) - (90 // 2), 141, 90)
-ship_speed = 7
+ship = None
+
+# Configs de cada nave
+ship1_cfg = {
+    "img": ship1_img,
+    "speed": 5,
+    "bullet_color": YELLOW,
+    "bullet_speed": 12,
+    "size": (160, 110),
+    "shoot_type": "laser",
+    "shoot_cooldown": 2000   # 2 segundos de cooldown
+}
+
+ship2_cfg = {
+    "img": ship2_img,
+    "speed": 9,
+    "bullet_color": WHITE,
+    "bullet_speed": 20,
+    "size": (141, 90),
+    "shoot_type": "bullet",
+    "shoot_cooldown": 20    # 0.2 segundos de cooldown
+}
 
 # ----- Bullets -----
 bullets = []
-bullet_speed = 15
 
 # ----- Stars -----
 stars = []
@@ -61,12 +132,11 @@ spawn_timer = 0
 
 # ----- Reset game function -----
 def reset_game():
-    global bullets, enemies, spawn_timer, ship, ship_img
+    global bullets, enemies, spawn_timer, ship
     bullets = []
     enemies = []
     spawn_timer = 0
-    ship_img = None
-    ship = pygame.Rect(50, (HEIGHT // 2) - (90 // 2), 141, 90)
+    ship = None
     reset_stars()
 
 # =========================================
@@ -93,10 +163,10 @@ while True:
         elif game_state == CHARACTER_SELECT:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_1:
-                    ship_img = ship1_img
+                    ship = Ship(**ship1_cfg)
                     game_state = GAME
                 if event.key == pygame.K_2:
-                    ship_img = ship2_img
+                    ship = Ship(**ship2_cfg)
                     game_state = GAME
 
         # ----- GAME -----
@@ -104,8 +174,10 @@ while True:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     game_state = PAUSE  # pausa o jogo
-                if event.key == pygame.K_SPACE:
-                    bullets.append(pygame.Rect(ship.right - 55, ship.centery - 2, 12, 4))
+                if event.key == pygame.K_SPACE and ship:
+                    shot = ship.shoot()
+                    if shot:
+                        bullets.append(shot)
 
         # ----- PAUSE -----
         elif game_state == PAUSE:
@@ -142,32 +214,28 @@ while True:
         text = font.render("Selecione seu personagem (1 ou 2)", True, WHITE)
         screen.blit(text, (WIDTH // 2 - text.get_width() // 2, 150))
 
-        screen.blit(ship1_img, (WIDTH // 3 - ship1_img.get_width() // 2, HEIGHT // 2))
-        screen.blit(ship2_img, (2 * WIDTH // 3 - ship2_img.get_width() // 2, HEIGHT // 2))
+        preview1 = pygame.transform.scale(ship1_img, ship1_cfg["size"])
+        preview2 = pygame.transform.scale(ship2_img, ship2_cfg["size"])
+        screen.blit(preview1, (WIDTH // 3 - preview1.get_width() // 2, HEIGHT // 2))
+        screen.blit(preview2, (2 * WIDTH // 3 - preview2.get_width() // 2, HEIGHT // 2))
 
     # ----- GAME -----
-    elif game_state == GAME:
+    elif game_state == GAME and ship:
         # Movimento nave
         keys = pygame.key.get_pressed()
-        if keys[pygame.K_UP] and ship.top > 0:
-            ship.y -= ship_speed
-        if keys[pygame.K_DOWN] and ship.bottom < HEIGHT:
-            ship.y += ship_speed
-        if keys[pygame.K_LEFT] and ship.left > 0:
-            ship.x -= ship_speed
-        if keys[pygame.K_RIGHT] and ship.right < WIDTH:
-            ship.x += ship_speed
+        ship.move(keys)
 
-        # Correção de limites com margem
-        margin = 185  # pode ajustar
-        play_area = pygame.Rect(margin, margin - 76, WIDTH - 4*margin, HEIGHT - 1.175*margin)
-        ship.clamp_ip(play_area)
-
-        # Movimento balas
+        # Movimento balas/lasers
+        now = pygame.time.get_ticks()
         for bullet in bullets[:]:
-            bullet.x += bullet_speed
-            if bullet.x > WIDTH:
-                bullets.remove(bullet)
+            if bullet["type"] == "bullet":
+                bullet["rect"].x += ship.bullet_speed
+                if bullet["rect"].x > WIDTH:
+                    bullets.remove(bullet)
+
+            elif bullet["type"] == "laser":
+                if now > bullet["expire"]:
+                    bullets.remove(bullet)
 
         # Movimento estrelas
         for star in stars:
@@ -194,9 +262,10 @@ while True:
         for bullet in bullets[:]:
             for enemy in enemies[:]:
                 enemy_rect = pygame.Rect(enemy['x'], enemy['y'], enemy['size'], enemy['size'])
-                if bullet.colliderect(enemy_rect):
-                    bullets.remove(bullet)
+                if bullet["rect"].colliderect(enemy_rect):
                     enemies.remove(enemy)
+                    if bullet["type"] == "bullet":
+                        bullets.remove(bullet)  # laser não desaparece ao colidir
                     break
 
         # ----- Draw -----
@@ -204,10 +273,10 @@ while True:
         for star in stars:
             pygame.draw.circle(screen, WHITE, (star[0], star[1]), star[3])
 
-        screen.blit(ship_img, ship)
+        screen.blit(ship.img, ship.rect)
 
         for bullet in bullets:
-            pygame.draw.rect(screen, YELLOW, bullet)
+            pygame.draw.rect(screen, ship.bullet_color, bullet["rect"])
 
         for enemy in enemies:
             pygame.draw.rect(screen, RED, (enemy['x'], enemy['y'], enemy['size'], enemy['size']))
