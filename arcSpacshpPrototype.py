@@ -20,7 +20,7 @@ YELLOW = (255, 255, 0)
 clock = pygame.time.Clock()
 
 # ----- Assets -----
-ship1_img = pygame.image.load("Spaceship2.0Frame.png").convert_alpha()
+ship1_img = pygame.image.load("Spaceship2Frame.png").convert_alpha()
 ship1_img = pygame.transform.scale(ship1_img, (141, 90))
 
 ship2_img = pygame.image.load("SpaceshipFrame.png").convert_alpha()
