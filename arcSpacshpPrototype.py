@@ -20,10 +20,10 @@ YELLOW = (255, 255, 0)
 clock = pygame.time.Clock()
 
 # ----- Assets -----
-ship1_img = pygame.image.load("Spaceship2Frame.png").convert_alpha()
+ship1_img = pygame.image.load("SpaceshipFrame.png").convert_alpha()
 ship1_img = pygame.transform.scale(ship1_img, (141, 90))
 
-ship2_img = pygame.image.load("SpaceshipFrame.png").convert_alpha()
+ship2_img = pygame.image.load("Spaceship2Frame.png").convert_alpha()
 ship2_img = pygame.transform.scale(ship2_img, (141, 90))
 
 # ----- Game states -----
@@ -157,6 +157,11 @@ while True:
             ship.x -= ship_speed
         if keys[pygame.K_RIGHT] and ship.right < WIDTH:
             ship.x += ship_speed
+
+        # Correção de limites com margem
+        margin = 185  # pode ajustar
+        play_area = pygame.Rect(margin, margin - 76, WIDTH - 4*margin, HEIGHT - 1.175*margin)
+        ship.clamp_ip(play_area)
 
         # Movimento balas
         for bullet in bullets[:]:
