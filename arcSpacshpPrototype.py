@@ -174,6 +174,7 @@ for row in range(rows):
         idx += 1
 
 selected_slot = 0  # começa no primeiro
+score = 0  # pontuação inicial
 
 # =========================================
 # ----------- GAME LOOP -------------------
@@ -212,9 +213,11 @@ while True:
                 elif event.key == pygame.K_SPACE:  # confirma escolha
                     chosen_index = slots[selected_slot]["index"]
                     if chosen_index == 1:
+                        score=0
                         ship = Ship(**ship1_cfg)
                         game_state = GAME
                     elif chosen_index == 2:
+                        score=0
                         ship = Ship(**ship2_cfg)
                         game_state = GAME
 
@@ -347,6 +350,7 @@ while True:
                     enemies.remove(enemy)
                     if bullet["type"] == "bullet":
                         bullets.remove(bullet)
+                    score += 10  # adiciona 10 pontos a cada inimigo destruído
                     break
 
         # ----- Draw -----
@@ -361,6 +365,11 @@ while True:
 
         for enemy in enemies:
             pygame.draw.rect(screen, RED, (enemy['x'], enemy['y'], enemy['size'], enemy['size']))
+
+        # Desenhar a pontuação
+        font_score = pygame.font.SysFont(None, 60, bold=True)
+        score_text = font_score.render(f"Pontos: {score}", True, YELLOW)
+        screen.blit(score_text, (195, 115))
 
     # ----- PAUSE -----
     elif game_state == PAUSE:
