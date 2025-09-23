@@ -43,13 +43,13 @@ class Ship:
         self.laser_start_time = 0
 
     def move(self, keys):
-        if keys[pygame.K_UP]:
+        if keys[pygame.K_UP] or keys[pygame.K_w]:
             self.rect.y -= self.speed
-        if keys[pygame.K_DOWN]:
+        if keys[pygame.K_DOWN] or keys[pygame.K_s]:
             self.rect.y += self.speed
-        if keys[pygame.K_LEFT]:
+        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
             self.rect.x -= self.speed
-        if keys[pygame.K_RIGHT]:
+        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
             self.rect.x += self.speed
 
         # Correção dinâmica de limites com base no tamanho da nave
@@ -105,7 +105,7 @@ ship = None
 # Configs de cada nave
 ship1_cfg = {
     "img": ship1_img,
-    "speed": 5,
+    "speed": 4,
     "bullet_color": YELLOW,
     "bullet_speed": 10,
     "size": (160, 110),
@@ -115,7 +115,7 @@ ship1_cfg = {
 
 ship2_cfg = {
     "img": ship2_img,
-    "speed": 9,
+    "speed": 10,
     "bullet_color": WHITE,
     "bullet_speed": 26,
     "size": (141, 90),
