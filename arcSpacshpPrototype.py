@@ -15,6 +15,7 @@ BLACK = (0, 0, 0)
 RED = (200, 50, 50)
 LIGHT_BLUE = (0, 200, 200)
 YELLOW = (255, 255, 0)
+GRAY = (50, 50, 50)
 
 # ----- Clock -----
 clock = pygame.time.Clock()
@@ -35,9 +36,11 @@ class Ship:
         self.speed = speed
         self.bullet_color = bullet_color
         self.bullet_speed = bullet_speed
-        self.shoot_type = shoot_type              # "bullet" ou "laser"
-        self.shoot_cooldown = shoot_cooldown      # em ms
-        self.last_shot_time = 0                   # controla o cooldown
+        self.shoot_type = shoot_type
+        self.shoot_cooldown = shoot_cooldown
+        self.last_shot_time = 0
+        self.laser_active = False
+        self.laser_start_time = 0
 
     def move(self, keys):
         if keys[pygame.K_UP]:
@@ -61,21 +64,31 @@ class Ship:
         )
         self.rect.clamp_ip(play_area)
 
-    def shoot(self):
+    def trigger_laser(self):
         now = pygame.time.get_ticks()
-        if now - self.last_shot_time < self.shoot_cooldown:
-            return None  # ainda em cooldown
+        if not self.laser_active and now - self.last_shot_time > self.shoot_cooldown:
+            self.laser_active = True
+            self.laser_start_time = now
+            self.last_shot_time = now
 
-        self.last_shot_time = now
+    def shoot(self, holding=None):
+        now = pygame.time.get_ticks()
+        if self.shoot_type == "laser":
+            if self.laser_active:
+                if now - self.laser_start_time > 1125:  # 2 segundos
+                    self.laser_active = False
+                    return None
+                else:
+                    laser = pygame.Rect(self.rect.right - 10, self.rect.top + 10, WIDTH, self.rect.height - 20)
+                    return {"type": "laser", "rect": laser}
+            return None
 
-        if self.shoot_type == "bullet":
+        elif self.shoot_type == "bullet":
+            if now - self.last_shot_time < self.shoot_cooldown:
+                return None
+            self.last_shot_time = now
             bullet = pygame.Rect(self.rect.right - 20, self.rect.centery - 3, 20, 6)
             return {"type": "bullet", "rect": bullet}
-
-        elif self.shoot_type == "laser":
-            # Laser atravessa a tela e dura 1s
-            laser = pygame.Rect(self.rect.right - 10, self.rect.top+10, WIDTH, self.rect.height-20)
-            return {"type": "laser", "rect": laser, "expire": now + 1000}
 
 # =========================================
 # ----------- GAME STATES -----------------
@@ -94,20 +107,20 @@ ship1_cfg = {
     "img": ship1_img,
     "speed": 5,
     "bullet_color": YELLOW,
-    "bullet_speed": 12,
+    "bullet_speed": 10,
     "size": (160, 110),
     "shoot_type": "laser",
-    "shoot_cooldown": 2000   # 2 segundos de cooldown
+    "shoot_cooldown": 3500   # 2 segundos de cooldown
 }
 
 ship2_cfg = {
     "img": ship2_img,
     "speed": 9,
     "bullet_color": WHITE,
-    "bullet_speed": 20,
+    "bullet_speed": 26,
     "size": (141, 90),
     "shoot_type": "bullet",
-    "shoot_cooldown": 20    # 0.2 segundos de cooldown
+    "shoot_cooldown": 250    # 0.08 segundos de cooldown
 }
 
 # ----- Bullets -----
@@ -140,12 +153,38 @@ def reset_game():
     reset_stars()
 
 # =========================================
+# ----------- CHARACTER SELECT VARS -------
+# =========================================
+cols, rows = 3, 3
+slot_size = 150
+spacing = 25
+total_width = cols * slot_size + (cols - 1) * spacing
+total_height = rows * slot_size + (rows - 1) * spacing
+start_x = WIDTH // 2 - total_width // 2
+start_y = 350
+
+slots = []
+idx = 1
+for row in range(rows):
+    for col in range(cols):
+        x = start_x + col * (slot_size + spacing)
+        y = start_y + row * (slot_size + spacing)
+        rect = pygame.Rect(x, y, slot_size, slot_size)
+        slots.append({"rect": rect, "index": idx})
+        idx += 1
+
+selected_slot = 0  # começa no primeiro
+
+# =========================================
 # ----------- GAME LOOP -------------------
 # =========================================
 while True:
     clock.tick(60)
 
-    for event in pygame.event.get():
+    keys = pygame.key.get_pressed()
+
+    events = pygame.event.get()
+    for event in events:
         if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
@@ -162,20 +201,32 @@ while True:
         # ----- CHARACTER SELECTION -----
         elif game_state == CHARACTER_SELECT:
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_1:
-                    ship = Ship(**ship1_cfg)
-                    game_state = GAME
-                if event.key == pygame.K_2:
-                    ship = Ship(**ship2_cfg)
-                    game_state = GAME
+                if event.key == pygame.K_RIGHT and (selected_slot + 1) % cols != 0:
+                    selected_slot += 1
+                elif event.key == pygame.K_LEFT and selected_slot % cols != 0:
+                    selected_slot -= 1
+                elif event.key == pygame.K_DOWN and selected_slot + cols < len(slots):
+                    selected_slot += cols
+                elif event.key == pygame.K_UP and selected_slot - cols >= 0:
+                    selected_slot -= cols
+                elif event.key == pygame.K_SPACE:  # confirma escolha
+                    chosen_index = slots[selected_slot]["index"]
+                    if chosen_index == 1:
+                        ship = Ship(**ship1_cfg)
+                        game_state = GAME
+                    elif chosen_index == 2:
+                        ship = Ship(**ship2_cfg)
+                        game_state = GAME
 
         # ----- GAME -----
         elif game_state == GAME:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     game_state = PAUSE  # pausa o jogo
-                if event.key == pygame.K_SPACE and ship:
-                    shot = ship.shoot()
+                if ship and ship.shoot_type == "laser" and event.key == pygame.K_SPACE:
+                    ship.trigger_laser()  # dispara laser por 2 segundos
+                if ship and ship.shoot_type == "bullet" and event.key == pygame.K_SPACE:
+                    shot = ship.shoot(False)
                     if shot:
                         bullets.append(shot)
 
@@ -198,43 +249,73 @@ while True:
     # ----- MENU -----
     if game_state == MENU:
         screen.fill(BLACK)
-        font = pygame.font.SysFont(None, 80)
-        title = font.render("PARALLAX SPACESHIP", True, WHITE)
-        start = font.render("1 - Jogar", True, LIGHT_BLUE)
-        quit_game = font.render("2 - Sair", True, RED)
+        for star in stars:
+            pygame.draw.circle(screen, WHITE, (star[0], star[1]), star[3])
 
+        font_title = pygame.font.SysFont(None, 120, bold=True)
+        font_btn = pygame.font.SysFont(None, 80)
+
+        title = font_title.render("PARALLAX SPACESHIP", True, YELLOW)
         screen.blit(title, (WIDTH // 2 - title.get_width() // 2, HEIGHT // 4))
-        screen.blit(start, (WIDTH // 2 - start.get_width() // 2, HEIGHT // 2))
-        screen.blit(quit_game, (WIDTH // 2 - quit_game.get_width() // 2, HEIGHT // 2 + 100))
+
+        start_rect = pygame.Rect(WIDTH // 2 - 200, HEIGHT // 2, 400, 80)
+        pygame.draw.rect(screen, LIGHT_BLUE, start_rect, border_radius=10)
+        start_txt = font_btn.render("1 - Jogar", True, BLACK)
+        screen.blit(start_txt, (start_rect.centerx - start_txt.get_width() // 2, start_rect.centery - start_txt.get_height() // 2))
+
+        quit_rect = pygame.Rect(WIDTH // 2 - 200, HEIGHT // 2 + 120, 400, 80)
+        pygame.draw.rect(screen, RED, quit_rect, border_radius=10)
+        quit_txt = font_btn.render("2 - Sair", True, BLACK)
+        screen.blit(quit_txt, (quit_rect.centerx - quit_txt.get_width() // 2, quit_rect.centery - quit_txt.get_height() // 2))
 
     # ----- CHARACTER SELECTION -----
     elif game_state == CHARACTER_SELECT:
         screen.fill(BLACK)
-        font = pygame.font.SysFont(None, 60)
-        text = font.render("Selecione seu personagem (1 ou 2)", True, WHITE)
-        screen.blit(text, (WIDTH // 2 - text.get_width() // 2, 150))
+        font = pygame.font.SysFont(None, 80, bold=True)
+        text = font.render("ESCOLHA SUA NAVE", True, YELLOW)
+        screen.blit(text, (WIDTH // 2 - text.get_width() // 2, 180))
 
-        preview1 = pygame.transform.scale(ship1_img, ship1_cfg["size"])
-        preview2 = pygame.transform.scale(ship2_img, ship2_cfg["size"])
-        screen.blit(preview1, (WIDTH // 3 - preview1.get_width() // 2, HEIGHT // 2))
-        screen.blit(preview2, (2 * WIDTH // 3 - preview2.get_width() // 2, HEIGHT // 2))
+        for i, slot in enumerate(slots):
+            rect = slot["rect"]
+            idx = slot["index"]
+
+            if idx == 1:
+                preview = pygame.transform.scale(ship1_img, (slot_size-20, slot_size-20))
+                screen.blit(preview, (rect.x+10, rect.y+10))
+            elif idx == 2:
+                preview = pygame.transform.scale(ship2_img, (slot_size-20, slot_size-20))
+                screen.blit(preview, (rect.x+10, rect.y+10))
+            else:
+                pygame.draw.rect(screen, GRAY, rect)
+                pygame.draw.rect(screen, WHITE, rect, 2)
+                lock_txt = pygame.font.SysFont(None, 40).render("???", True, WHITE)
+                screen.blit(lock_txt, (rect.centerx - lock_txt.get_width()//2, rect.centery - lock_txt.get_height()//2))
+
+            if i == selected_slot:
+                pygame.draw.rect(screen, YELLOW, rect, 6)
+
+        instr = pygame.font.SysFont(None, 50).render("Use as setas e Espaço para confirmar", True, WHITE)
+        screen.blit(instr, (WIDTH // 2 - instr.get_width() // 2, HEIGHT - 100))
 
     # ----- GAME -----
     elif game_state == GAME and ship:
-        # Movimento nave
-        keys = pygame.key.get_pressed()
         ship.move(keys)
 
-        # Movimento balas/lasers
-        now = pygame.time.get_ticks()
+        if ship.shoot_type == "laser":
+            shot = ship.shoot()
+            if shot:
+                if len(bullets) == 0 or bullets[-1]["type"] != "laser":
+                    bullets.append(shot)
+                else:
+                    bullets[-1] = shot
+            else:
+                bullets = [b for b in bullets if b["type"] != "laser"]
+
+        # Movimento balas normais
         for bullet in bullets[:]:
             if bullet["type"] == "bullet":
                 bullet["rect"].x += ship.bullet_speed
                 if bullet["rect"].x > WIDTH:
-                    bullets.remove(bullet)
-
-            elif bullet["type"] == "laser":
-                if now > bullet["expire"]:
                     bullets.remove(bullet)
 
         # Movimento estrelas
@@ -265,7 +346,7 @@ while True:
                 if bullet["rect"].colliderect(enemy_rect):
                     enemies.remove(enemy)
                     if bullet["type"] == "bullet":
-                        bullets.remove(bullet)  # laser não desaparece ao colidir
+                        bullets.remove(bullet)
                     break
 
         # ----- Draw -----
