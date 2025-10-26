@@ -4,35 +4,40 @@ import random
 
 pygame.init()
 
-# ----- Screen config -----
+# =========================================
+# ----------- CONFIGURAÇÕES GERAIS --------
+# =========================================
 WIDTH, HEIGHT = 1920, 1080  # Full HD
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption('Parallax - Spaceship Arcade 2.5D')
+clock = pygame.time.Clock()
+spawn_margin = 100  # distância da borda superior e inferior para spawn de inimigos
+difficulty_step = 100  # pontos para aumentar dificuldade
+game_speed = 1  # multiplicador de velocidade do jogo
 
-# ----- Colors -----
+# ----- Cores -----
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED = (200, 50, 50)
 LIGHT_BLUE = (0, 200, 200)
 YELLOW = (255, 255, 0)
 GRAY = (50, 50, 50)
+CYAN = (0, 255, 255)
+PURPLE = (160, 80, 255)
 
-# ----- Clock -----
-clock = pygame.time.Clock()
-
-# ----- Assets -----
+# =========================================
+# ----------- CARREGAMENTO DE ASSETS -------
+# =========================================
 ship1_img = pygame.image.load("SpaceshipFrame.png").convert_alpha()
 ship2_img = pygame.image.load("Spaceship2Frame.png").convert_alpha()
 
 # =========================================
-# ----------- SHIP CLASS ------------------
+# ----------- CLASSE DA NAVE ---------------
 # =========================================
 class Ship:
     def __init__(self, img, speed, bullet_color, bullet_speed, size, shoot_type, shoot_cooldown):
         self.img = pygame.transform.scale(img, size)
-        self.rect = self.img.get_rect()
-        self.rect.x = 50
-        self.rect.y = (HEIGHT // 2) - (self.rect.height // 2)
+        self.rect = self.img.get_rect(center=(100, HEIGHT // 2))
         self.speed = speed
         self.bullet_color = bullet_color
         self.bullet_speed = bullet_speed
@@ -52,13 +57,10 @@ class Ship:
         if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
             self.rect.x += self.speed
 
-        # Correção dinâmica de limites com base no tamanho da nave
         margin = 185
         margin_y = int(self.rect.height * 0.98)
-
         play_area = pygame.Rect(
-            margin,
-            margin_y,
+            margin, margin_y,
             WIDTH - 4 * margin,
             HEIGHT - 2 * margin_y
         )
@@ -75,314 +77,368 @@ class Ship:
         now = pygame.time.get_ticks()
         if self.shoot_type == "laser":
             if self.laser_active:
-                if now - self.laser_start_time > 1125:  # 2 segundos
+                if now - self.laser_start_time > 1125:
                     self.laser_active = False
                     return None
-                else:
-                    laser = pygame.Rect(self.rect.right - 10, self.rect.top + 10, WIDTH, self.rect.height - 20)
-                    return {"type": "laser", "rect": laser}
+                return {"type": "laser", "rect": pygame.Rect(
+                    self.rect.right - 10, self.rect.top + 15, WIDTH, self.rect.height - 30
+                )}
             return None
-
         elif self.shoot_type == "bullet":
             if now - self.last_shot_time < self.shoot_cooldown:
                 return None
             self.last_shot_time = now
-            bullet = pygame.Rect(self.rect.right - 20, self.rect.centery - 3, 20, 6)
-            return {"type": "bullet", "rect": bullet}
+            return {"type": "bullet", "rect": pygame.Rect(
+                self.rect.right - 20, self.rect.centery - 3, 20, 6
+            )}
 
 # =========================================
-# ----------- GAME STATES -----------------
+# ----------- CONFIGURAÇÕES DE NAVES -------
 # =========================================
-MENU = "menu"
-CHARACTER_SELECT = "character_select"
-GAME = "game"
-PAUSE = "pause"
-game_state = MENU
-
-# ----- Player config -----
-ship = None
-
-# Configs de cada nave
 ship1_cfg = {
     "img": ship1_img,
-    "speed": 4,
+    "speed": 5,
     "bullet_color": YELLOW,
     "bullet_speed": 10,
-    "size": (160, 110),
+    "size": (150, 105),
     "shoot_type": "laser",
-    "shoot_cooldown": 3500   # 2 segundos de cooldown
+    "shoot_cooldown": 2500
 }
 
 ship2_cfg = {
     "img": ship2_img,
-    "speed": 10,
+    "speed": 9,
     "bullet_color": WHITE,
     "bullet_speed": 26,
     "size": (141, 90),
     "shoot_type": "bullet",
-    "shoot_cooldown": 250    # 0.08 segundos de cooldown
+    "shoot_cooldown": 175
 }
 
-# ----- Bullets -----
-bullets = []
+# =========================================
+# ----------- VARIÁVEIS GLOBAIS ------------
+# =========================================
+MENU, CHARACTER_SELECT, GAME, PAUSE, LOSE = "menu", "character_select", "game", "pause", "lose"
+game_state = MENU
 
-# ----- Stars -----
+ship = None
+bullets = []
+enemies = []
 stars = []
+spawn_timer = 0
+score = 0
+lives = 3  # quantidade inicial de vidas
+
+# =========================================
+# ----------- FUNÇÕES AUXILIARES -----------
+# =========================================
 def reset_stars():
     global stars
-    stars = []
-    for i in range(120):
-        x = random.randint(0, WIDTH)
-        y = random.randint(0, HEIGHT)
-        speed = random.choice([1, 2, 3])
-        size = speed
-        stars.append([x, y, speed, size])
-reset_stars()
+    stars = [[random.randint(0, WIDTH), random.randint(0, HEIGHT),
+              speed := random.choice([1, 2, 3]), speed] for _ in range(120)]
 
-# ----- Enemies -----
-enemies = []
-spawn_timer = 0
-
-# ----- Reset game function -----
 def reset_game():
-    global bullets, enemies, spawn_timer, ship
-    bullets = []
-    enemies = []
+    global bullets, enemies, spawn_timer, ship, score, lives
+    bullets.clear()
+    enemies.clear()
     spawn_timer = 0
     ship = None
+    score = 0
+    lives = 3  # agora a variável global é atualizada
     reset_stars()
 
+reset_stars()
+
 # =========================================
-# ----------- CHARACTER SELECT VARS -------
+# ----------- FUNÇÕES DE TELAS -------------
+# =========================================
+def draw_menu():
+    screen.fill(BLACK)
+    for star in stars:
+        pygame.draw.circle(screen, WHITE, (star[0], star[1]), star[3])
+
+    font_title = pygame.font.SysFont(None, 120, bold=True)
+    font_btn = pygame.font.SysFont(None, 80)
+
+    title = font_title.render("PARALLAX SPACESHIP", True, YELLOW)
+    screen.blit(title, (WIDTH // 2 - title.get_width() // 2, HEIGHT // 4))
+
+    start_rect = pygame.Rect(WIDTH // 2 - 200, HEIGHT // 2, 400, 80)
+    quit_rect = pygame.Rect(WIDTH // 2 - 200, HEIGHT // 2 + 120, 400, 80)
+    pygame.draw.rect(screen, LIGHT_BLUE, start_rect, border_radius=10)
+    pygame.draw.rect(screen, RED, quit_rect, border_radius=10)
+
+    start_txt = font_btn.render("1 - Jogar", True, BLACK)
+    quit_txt = font_btn.render("2 - Sair", True, BLACK)
+    screen.blit(start_txt, (start_rect.centerx - start_txt.get_width() // 2, start_rect.centery - start_txt.get_height() // 2))
+    screen.blit(quit_txt, (quit_rect.centerx - quit_txt.get_width() // 2, quit_rect.centery - quit_txt.get_height() // 2))
+
+def draw_character_select(selected_slot, slots):
+    screen.fill(BLACK)
+    font = pygame.font.SysFont(None, 80, bold=True)
+    title = font.render("ESCOLHA SUA NAVE", True, YELLOW)
+    screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 180))
+
+    for i, slot in enumerate(slots):
+        rect, idx = slot["rect"], slot["index"]
+        if idx == 1:
+            preview = pygame.transform.scale(ship1_img, (130, 130))
+            screen.blit(preview, (rect.x + 10, rect.y + 10))
+        elif idx == 2:
+            preview = pygame.transform.scale(ship2_img, (130, 130))
+            screen.blit(preview, (rect.x + 10, rect.y + 10))
+        else:
+            pygame.draw.rect(screen, GRAY, rect)
+            pygame.draw.rect(screen, WHITE, rect, 2)
+            lock_txt = pygame.font.SysFont(None, 40).render("???", True, WHITE)
+            screen.blit(lock_txt, (rect.centerx - lock_txt.get_width() // 2, rect.centery - lock_txt.get_height() // 2))
+
+        if i == selected_slot:
+            pygame.draw.rect(screen, YELLOW, rect, 6)
+
+    instr = pygame.font.SysFont(None, 50).render("Use as setas e Espaço para confirmar", True, WHITE)
+    screen.blit(instr, (WIDTH // 2 - instr.get_width() // 2, HEIGHT - 100))
+
+def draw_lose():
+    screen.fill(BLACK)
+    font_title = pygame.font.SysFont(None, 120, bold=True)
+    font_btn = pygame.font.SysFont(None, 80)
+    
+    title = font_title.render("YOU LOSE!", True, RED)
+    screen.blit(title, (WIDTH // 2 - title.get_width() // 2, HEIGHT // 3))
+    
+    retry_rect = pygame.Rect(WIDTH // 2 - 200, HEIGHT // 2, 400, 80)
+    menu_rect = pygame.Rect(WIDTH // 2 - 200, HEIGHT // 2 + 120, 400, 80)
+    
+    pygame.draw.rect(screen, LIGHT_BLUE, retry_rect, border_radius=10)
+    pygame.draw.rect(screen, YELLOW, menu_rect, border_radius=10)
+    
+    retry_txt = font_btn.render("1 - Retry", True, BLACK)
+    menu_txt = font_btn.render("2 - Menu", True, BLACK)
+    
+    screen.blit(retry_txt, (retry_rect.centerx - retry_txt.get_width() // 2, retry_rect.centery - retry_txt.get_height() // 2))
+    screen.blit(menu_txt, (menu_rect.centerx - menu_txt.get_width() // 2, menu_rect.centery - menu_txt.get_height() // 2))
+
+# =========================================
+# ----------- FUNÇÃO DO JOGO ---------------
+# =========================================
+def draw_game():
+    global bullets, enemies, spawn_timer, score, game_speed, lives, ship, game_state
+
+    if ship is None:
+        return  # sai imediatamente se não houver nave
+
+    ship.move(keys)
+
+    # --- Disparo ---
+    if ship.shoot_type == "laser":
+        shot = ship.shoot()
+        if shot:
+            if len(bullets) == 0 or bullets[-1]["type"] != "laser":
+                bullets.append(shot)
+            else:
+                bullets[-1] = shot
+        else:
+            bullets = [b for b in bullets if b["type"] != "laser"]
+
+    for bullet in bullets[:]:
+        if bullet["type"] == "bullet":
+            bullet["rect"].x += ship.bullet_speed
+            if bullet["rect"].x > WIDTH:
+                bullets.remove(bullet)
+
+    # --- Fundo estrelado ---
+    for star in stars:
+        star[0] -= star[2] * game_speed
+        if star[0] < 0:
+            star[0] = WIDTH
+            star[1] = random.randint(0, HEIGHT)
+
+    # --- Geração de inimigos ---
+    spawn_timer += 1
+    if spawn_timer > 60:
+        spawn_timer = 0
+        # Spawn vertical centralizado (mais próximo do centro da tela)
+        vertical_margin = HEIGHT // 6  # deixa 1/6 da tela livre acima e abaixo
+        spawn_y = random.randint(vertical_margin, HEIGHT - vertical_margin)
+        enemies.append({
+            'x': WIDTH + 50,
+            'y': spawn_y,
+            'size': 35,
+            'speed': 3 * game_speed
+        })
+
+    # --- Movimento de inimigos e vidas ---
+    for enemy in enemies[:]:
+        enemy['x'] -= enemy['speed']
+        if enemy['x'] < -50:
+            enemies.remove(enemy)
+            lives -= 1
+            if lives <= 0:
+                game_state = LOSE
+                return  # sai imediatamente
+
+    # --- Colisões ---
+    for bullet in bullets[:]:
+        for enemy in enemies[:]:
+            if bullet["rect"].colliderect(pygame.Rect(enemy['x'], enemy['y'], enemy['size'], enemy['size'])):
+                enemies.remove(enemy)
+                if bullet["type"] == "bullet":
+                    bullets.remove(bullet)
+                score += 10
+                break
+
+    # --- Aumenta dificuldade ---
+    new_speed_level = 1 + (score // difficulty_step) * 0.15
+    if new_speed_level != game_speed:
+        game_speed = new_speed_level
+        if ship:  # só aumenta velocidade se ship existir
+            ship.speed += 0.05
+
+    # --- Desenho ---
+    screen.fill(BLACK)
+    for star in stars:
+        pygame.draw.circle(screen, WHITE, (star[0], star[1]), star[3])
+    screen.blit(ship.img, ship.rect)
+
+    for bullet in bullets:
+        if bullet["type"] == "laser":
+            laser_surface = pygame.Surface((bullet["rect"].width, bullet["rect"].height), pygame.SRCALPHA)
+            color_center = (180, 80, 255, 200)
+            color_edge = (0, 255, 255, 100)
+            for i in range(bullet["rect"].height):
+                t = i / bullet["rect"].height
+                r = int(color_center[0] * (1 - t) + color_edge[0] * t)
+                g = int(color_center[1] * (1 - t) + color_edge[1] * t)
+                b = int(color_center[2] * (1 - t) + color_edge[2] * t)
+                a = int(color_center[3] * (1 - t) + color_edge[3] * t)
+                pygame.draw.line(laser_surface, (r, g, b, a), (0, i), (bullet["rect"].width, i))
+            screen.blit(laser_surface, bullet["rect"])
+        else:
+            pygame.draw.rect(screen, ship.bullet_color, bullet["rect"], border_radius=4)
+
+    for enemy in enemies:
+        rect = pygame.Rect(enemy['x'], enemy['y'], enemy['size'], enemy['size'])
+        pygame.draw.rect(screen, (255, 100, 100), rect, border_radius=6)
+        pygame.draw.rect(screen, (255, 180, 180), rect, 3, border_radius=6)
+
+    score_text = pygame.font.SysFont(None, 60, bold=True).render(f"Pontos: {score}", True, YELLOW)
+    lives_text = pygame.font.SysFont(None, 60, bold=True).render(f"Vidas: {lives}", True, RED)
+    screen.blit(lives_text, (195, 180))
+    screen.blit(score_text, (195, 115))
+
+# =========================================
+# ----------- TELA DE PAUSE ----------------
+# =========================================
+def draw_pause():
+    screen.fill(BLACK)
+    font = pygame.font.SysFont(None, 80)
+    texts = [
+        ("PAUSADO", WHITE, HEIGHT // 4),
+        ("1 - Continuar", LIGHT_BLUE, HEIGHT // 2),
+        ("2 - Voltar ao Menu", YELLOW, HEIGHT // 2 + 100),
+        ("3 - Sair", RED, HEIGHT // 2 + 200)
+    ]
+    for txt, color, y in texts:
+        render = font.render(txt, True, color)
+        screen.blit(render, (WIDTH // 2 - render.get_width() // 2, y))
+
+# =========================================
+# ----------- PREPARO DOS SLOTS ------------
 # =========================================
 cols, rows = 3, 3
-slot_size = 150
-spacing = 25
+slot_size, spacing = 150, 25
 total_width = cols * slot_size + (cols - 1) * spacing
 total_height = rows * slot_size + (rows - 1) * spacing
-start_x = WIDTH // 2 - total_width // 2
-start_y = 350
+start_x, start_y = WIDTH // 2 - total_width // 2, 350
 
-slots = []
-idx = 1
-for row in range(rows):
-    for col in range(cols):
-        x = start_x + col * (slot_size + spacing)
-        y = start_y + row * (slot_size + spacing)
-        rect = pygame.Rect(x, y, slot_size, slot_size)
-        slots.append({"rect": rect, "index": idx})
-        idx += 1
+slots = [{"rect": pygame.Rect(start_x + c * (slot_size + spacing),
+                              start_y + r * (slot_size + spacing),
+                              slot_size, slot_size),
+          "index": i + 1}
+         for i, (r, c) in enumerate([(r, c) for r in range(rows) for c in range(cols)])]
 
-selected_slot = 0  # começa no primeiro
-score = 0  # pontuação inicial
+selected_slot = 0
 
 # =========================================
-# ----------- GAME LOOP -------------------
+# ----------- LOOP PRINCIPAL ---------------
 # =========================================
 while True:
     clock.tick(60)
-
     keys = pygame.key.get_pressed()
 
-    events = pygame.event.get()
-    for event in events:
+    for event in pygame.event.get():
         if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
 
-        # ----- MENU -----
-        if game_state == MENU:
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_1:  # iniciar jogo
-                    game_state = CHARACTER_SELECT
-                if event.key == pygame.K_2:  # sair
-                    pygame.quit()
-                    sys.exit()
+        if game_state == MENU and event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_1:
+                game_state = CHARACTER_SELECT
+            elif event.key == pygame.K_2:
+                pygame.quit()
+                sys.exit()
 
-        # ----- CHARACTER SELECTION -----
-        elif game_state == CHARACTER_SELECT:
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_RIGHT and (selected_slot + 1) % cols != 0:
-                    selected_slot += 1
-                elif event.key == pygame.K_LEFT and selected_slot % cols != 0:
-                    selected_slot -= 1
-                elif event.key == pygame.K_DOWN and selected_slot + cols < len(slots):
-                    selected_slot += cols
-                elif event.key == pygame.K_UP and selected_slot - cols >= 0:
-                    selected_slot -= cols
-                elif event.key == pygame.K_SPACE:  # confirma escolha
-                    chosen_index = slots[selected_slot]["index"]
-                    if chosen_index == 1:
-                        score=0
-                        ship = Ship(**ship1_cfg)
-                        game_state = GAME
-                    elif chosen_index == 2:
-                        score=0
-                        ship = Ship(**ship2_cfg)
-                        game_state = GAME
-
-        # ----- GAME -----
-        elif game_state == GAME:
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    game_state = PAUSE  # pausa o jogo
-                if ship and ship.shoot_type == "laser" and event.key == pygame.K_SPACE:
-                    ship.trigger_laser()  # dispara laser por 2 segundos
-                if ship and ship.shoot_type == "bullet" and event.key == pygame.K_SPACE:
-                    shot = ship.shoot(False)
-                    if shot:
-                        bullets.append(shot)
-
-        # ----- PAUSE -----
-        elif game_state == PAUSE:
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_1:  # continuar
+        elif game_state == CHARACTER_SELECT and event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_RIGHT and (selected_slot + 1) % cols != 0:
+                selected_slot += 1
+            elif event.key == pygame.K_LEFT and selected_slot % cols != 0:
+                selected_slot -= 1
+            elif event.key == pygame.K_DOWN and selected_slot + cols < len(slots):
+                selected_slot += cols
+            elif event.key == pygame.K_UP and selected_slot - cols >= 0:
+                selected_slot -= cols
+            elif event.key == pygame.K_SPACE:
+                idx = slots[selected_slot]["index"]
+                if idx == 1:
+                    ship = Ship(**ship1_cfg)
                     game_state = GAME
-                if event.key == pygame.K_2:  # voltar ao menu (reset jogo)
-                    reset_game()
-                    game_state = MENU
-                if event.key == pygame.K_3:  # sair
-                    pygame.quit()
-                    sys.exit()
+                elif idx == 2:
+                    ship = Ship(**ship2_cfg)
+                    game_state = GAME
 
-    # =========================================
-    # ----------- DRAW SCREENS ----------------
-    # =========================================
-
-    # ----- MENU -----
-    if game_state == MENU:
-        screen.fill(BLACK)
-        for star in stars:
-            pygame.draw.circle(screen, WHITE, (star[0], star[1]), star[3])
-
-        font_title = pygame.font.SysFont(None, 120, bold=True)
-        font_btn = pygame.font.SysFont(None, 80)
-
-        title = font_title.render("PARALLAX SPACESHIP", True, YELLOW)
-        screen.blit(title, (WIDTH // 2 - title.get_width() // 2, HEIGHT // 4))
-
-        start_rect = pygame.Rect(WIDTH // 2 - 200, HEIGHT // 2, 400, 80)
-        pygame.draw.rect(screen, LIGHT_BLUE, start_rect, border_radius=10)
-        start_txt = font_btn.render("1 - Jogar", True, BLACK)
-        screen.blit(start_txt, (start_rect.centerx - start_txt.get_width() // 2, start_rect.centery - start_txt.get_height() // 2))
-
-        quit_rect = pygame.Rect(WIDTH // 2 - 200, HEIGHT // 2 + 120, 400, 80)
-        pygame.draw.rect(screen, RED, quit_rect, border_radius=10)
-        quit_txt = font_btn.render("2 - Sair", True, BLACK)
-        screen.blit(quit_txt, (quit_rect.centerx - quit_txt.get_width() // 2, quit_rect.centery - quit_txt.get_height() // 2))
-
-    # ----- CHARACTER SELECTION -----
-    elif game_state == CHARACTER_SELECT:
-        screen.fill(BLACK)
-        font = pygame.font.SysFont(None, 80, bold=True)
-        text = font.render("ESCOLHA SUA NAVE", True, YELLOW)
-        screen.blit(text, (WIDTH // 2 - text.get_width() // 2, 180))
-
-        for i, slot in enumerate(slots):
-            rect = slot["rect"]
-            idx = slot["index"]
-
-            if idx == 1:
-                preview = pygame.transform.scale(ship1_img, (slot_size-20, slot_size-20))
-                screen.blit(preview, (rect.x+10, rect.y+10))
-            elif idx == 2:
-                preview = pygame.transform.scale(ship2_img, (slot_size-20, slot_size-20))
-                screen.blit(preview, (rect.x+10, rect.y+10))
-            else:
-                pygame.draw.rect(screen, GRAY, rect)
-                pygame.draw.rect(screen, WHITE, rect, 2)
-                lock_txt = pygame.font.SysFont(None, 40).render("???", True, WHITE)
-                screen.blit(lock_txt, (rect.centerx - lock_txt.get_width()//2, rect.centery - lock_txt.get_height()//2))
-
-            if i == selected_slot:
-                pygame.draw.rect(screen, YELLOW, rect, 6)
-
-        instr = pygame.font.SysFont(None, 50).render("Use as setas e Espaço para confirmar", True, WHITE)
-        screen.blit(instr, (WIDTH // 2 - instr.get_width() // 2, HEIGHT - 100))
-
-    # ----- GAME -----
-    elif game_state == GAME and ship:
-        ship.move(keys)
-
-        if ship.shoot_type == "laser":
-            shot = ship.shoot()
-            if shot:
-                if len(bullets) == 0 or bullets[-1]["type"] != "laser":
+        elif game_state == GAME and event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                game_state = PAUSE
+            elif ship and ship.shoot_type == "laser" and event.key == pygame.K_SPACE:
+                ship.trigger_laser()
+            elif ship and ship.shoot_type == "bullet" and event.key == pygame.K_SPACE:
+                shot = ship.shoot()
+                if shot:
                     bullets.append(shot)
-                else:
-                    bullets[-1] = shot
-            else:
-                bullets = [b for b in bullets if b["type"] != "laser"]
 
-        # Movimento balas normais
-        for bullet in bullets[:]:
-            if bullet["type"] == "bullet":
-                bullet["rect"].x += ship.bullet_speed
-                if bullet["rect"].x > WIDTH:
-                    bullets.remove(bullet)
+        elif game_state == PAUSE and event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_1:
+                game_state = GAME
+            elif event.key == pygame.K_2:
+                reset_game()
+                game_state = MENU
+            elif event.key == pygame.K_3:
+                pygame.quit()
+                sys.exit()
 
-        # Movimento estrelas
-        for star in stars:
-            star[0] -= star[2]
-            if star[0] < 0:
-                star[0] = WIDTH
-                star[1] = random.randint(0, HEIGHT)
+        elif game_state == LOSE and event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_1:
+                reset_game()
+                # recria a nave selecionada
+                if selected_slot == 0:
+                    ship = Ship(**ship1_cfg)
+                elif selected_slot == 1:
+                    ship = Ship(**ship2_cfg)
+                game_state = GAME
+            elif event.key == pygame.K_2:
+                reset_game()
+                game_state = MENU
 
-        # Spawn inimigos
-        spawn_timer += 1
-        if spawn_timer > 60:
-            spawn_timer = 0
-            y = random.randint(50, HEIGHT - 50)
-            enemies.append({'x': WIDTH + 50, 'y': y, 'size': 15, 'speed': 3})
-
-        # Movimento inimigos
-        for enemy in enemies[:]:
-            enemy['x'] -= enemy['speed']
-            enemy['size'] += 0.15
-            if enemy['x'] < -50:
-                enemies.remove(enemy)
-
-        # Colisão
-        for bullet in bullets[:]:
-            for enemy in enemies[:]:
-                enemy_rect = pygame.Rect(enemy['x'], enemy['y'], enemy['size'], enemy['size'])
-                if bullet["rect"].colliderect(enemy_rect):
-                    enemies.remove(enemy)
-                    if bullet["type"] == "bullet":
-                        bullets.remove(bullet)
-                    score += 10  # adiciona 10 pontos a cada inimigo destruído
-                    break
-
-        # ----- Draw -----
-        screen.fill(BLACK)
-        for star in stars:
-            pygame.draw.circle(screen, WHITE, (star[0], star[1]), star[3])
-
-        screen.blit(ship.img, ship.rect)
-
-        for bullet in bullets:
-            pygame.draw.rect(screen, ship.bullet_color, bullet["rect"])
-
-        for enemy in enemies:
-            pygame.draw.rect(screen, RED, (enemy['x'], enemy['y'], enemy['size'], enemy['size']))
-
-        # Desenhar a pontuação
-        font_score = pygame.font.SysFont(None, 60, bold=True)
-        score_text = font_score.render(f"Pontos: {score}", True, YELLOW)
-        screen.blit(score_text, (195, 115))
-
-    # ----- PAUSE -----
+    if game_state == MENU:
+        draw_menu()
+    elif game_state == CHARACTER_SELECT:
+        draw_character_select(selected_slot, slots)
+    elif game_state == GAME:
+        draw_game()  # draw_game() já se protege sozinho
     elif game_state == PAUSE:
-        screen.fill(BLACK)
-        font = pygame.font.SysFont(None, 80)
-        pause_text = font.render("PAUSADO", True, WHITE)
-        resume = font.render("1 - Continuar", True, LIGHT_BLUE)
-        main_menu = font.render("2 - Voltar ao Menu", True, YELLOW)
-        quit_game = font.render("3 - Sair", True, RED)
-
-        screen.blit(pause_text, (WIDTH // 2 - pause_text.get_width() // 2, HEIGHT // 4))
-        screen.blit(resume, (WIDTH // 2 - resume.get_width() // 2, HEIGHT // 2))
-        screen.blit(main_menu, (WIDTH // 2 - main_menu.get_width() // 2, HEIGHT // 2 + 100))
-        screen.blit(quit_game, (WIDTH // 2 - quit_game.get_width() // 2, HEIGHT // 2 + 200))
+        draw_pause()
+    elif game_state == LOSE:
+        draw_lose()
 
     pygame.display.flip()
