@@ -112,7 +112,7 @@ ship2_cfg = {
     "bullet_speed": 26,
     "size": (141, 90),
     "shoot_type": "bullet",
-    "shoot_cooldown": 175
+    "shoot_cooldown": 100
 }
 
 # =========================================
