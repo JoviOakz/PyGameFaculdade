@@ -28,8 +28,14 @@ PURPLE = (160, 80, 255)
 # =========================================
 # ----------- CARREGAMENTO DE ASSETS -------
 # =========================================
-ship1_img = pygame.image.load("SpaceshipFrame.png").convert_alpha()
-ship2_img = pygame.image.load("Spaceship2Frame.png").convert_alpha()
+ship1_img = pygame.image.load("assets/Spaceship1.png").convert_alpha()
+ship2_img = pygame.image.load("assets/Spaceship2.png").convert_alpha()
+enemy_imgs = [
+    pygame.transform.scale(pygame.image.load("assets/Asteroid1.png").convert_alpha(), (80, 80)),
+    pygame.transform.scale(pygame.image.load("assets/Asteroid2.png").convert_alpha(), (80, 80)),
+    pygame.transform.scale(pygame.image.load("assets/Asteroid3.png").convert_alpha(), (80, 80))
+]
+trash_img = pygame.transform.scale(pygame.image.load("assets/TrashBag.png").convert_alpha(), (45, 45))
 
 # =========================================
 # ----------- CLASSE DA NAVE ---------------
@@ -95,8 +101,8 @@ class Ship:
 # =========================================
 # ----------- CONFIGURAÇÕES DE NAVES -------
 # =========================================
-ship1_cfg = {
-    "img": ship1_img,
+ship2_cfg = {
+    "img": ship2_img,
     "speed": 5,
     "bullet_color": YELLOW,
     "bullet_speed": 10,
@@ -105,8 +111,8 @@ ship1_cfg = {
     "shoot_cooldown": 2500
 }
 
-ship2_cfg = {
-    "img": ship2_img,
+ship1_cfg = {
+    "img": ship1_img,
     "speed": 9,
     "bullet_color": WHITE,
     "bullet_speed": 26,
@@ -182,10 +188,10 @@ def draw_character_select(selected_slot, slots):
     for i, slot in enumerate(slots):
         rect, idx = slot["rect"], slot["index"]
         if idx == 1:
-            preview = pygame.transform.scale(ship1_img, (130, 130))
+            preview = pygame.transform.scale(ship2_img, (130, 130))
             screen.blit(preview, (rect.x + 10, rect.y + 10))
         elif idx == 2:
-            preview = pygame.transform.scale(ship2_img, (130, 130))
+            preview = pygame.transform.scale(ship1_img, (130, 130))
             screen.blit(preview, (rect.x + 10, rect.y + 10))
         else:
             pygame.draw.rect(screen, GRAY, rect)
@@ -226,7 +232,7 @@ def draw_game():
     global bullets, enemies, spawn_timer, score, game_speed, lives, ship, game_state
 
     if ship is None:
-        return  # sai imediatamente se não houver nave
+        return
 
     ship.move(keys)
 
@@ -254,46 +260,94 @@ def draw_game():
             star[0] = WIDTH
             star[1] = random.randint(0, HEIGHT)
 
-    # --- Geração de inimigos ---
+    # --- Geração de inimigos (asteroides e lixo especial) ---
     spawn_timer += 1
     if spawn_timer > 60:
         spawn_timer = 0
-        # Spawn vertical centralizado (mais próximo do centro da tela)
-        vertical_margin = HEIGHT // 6  # deixa 1/6 da tela livre acima e abaixo
+        vertical_margin = HEIGHT // 6
         spawn_y = random.randint(vertical_margin, HEIGHT - vertical_margin)
-        enemies.append({
-            'x': WIDTH + 50,
-            'y': spawn_y,
-            'size': 35,
-            'speed': 3 * game_speed
-        })
 
-    # --- Movimento de inimigos e vidas ---
+        # 1 a cada 5 inimigos será um TrashBag (inimigo especial)
+        if random.randint(1, 5) == 1:
+            enemies.append({
+                'x': WIDTH + 50,
+                'y': spawn_y,
+                'size': 65,
+                'speed': 4 * game_speed,
+                'img': trash_img,
+                'type': 'trash',
+                'angle': random.randint(0, 360),  # ângulo inicial aleatório
+                'rotation_speed': random.uniform(2, 4)  # velocidade de rotação
+            })
+        else:
+            asteroid_size = random.randint(60, 120)
+            asteroid_img = random.choice(enemy_imgs)
+            asteroid_img = pygame.transform.scale(asteroid_img, (asteroid_size, asteroid_size))
+
+            # Adiciona uma rotação inicial aleatória ao asteroide
+            angle = random.randint(0, 360)
+            rotated_img = pygame.transform.rotate(asteroid_img, angle)
+
+            enemies.append({
+                'x': WIDTH + 50,
+                'y': spawn_y,
+                'size': asteroid_size,
+                'speed': 3 * game_speed,
+                'img': rotated_img,
+                'type': 'asteroid',
+                'angle': angle  # armazenamos caso queira usar no futuro
+            })
+
+    # --- Movimento dos inimigos ---
     for enemy in enemies[:]:
         enemy['x'] -= enemy['speed']
-        if enemy['x'] < -50:
-            enemies.remove(enemy)
-            lives -= 1
-            if lives <= 0:
-                game_state = LOSE
-                return  # sai imediatamente
 
-    # --- Colisões ---
+        # Se o inimigo sair da tela
+        if enemy['x'] < -100:
+            # Se for um lixo (TrashBag), o jogador perde 1 vida
+            if enemy['type'] == 'trash':
+                lives -= 1
+                if lives <= 0:
+                    game_state = LOSE
+                    return
+            enemies.remove(enemy)
+
+    # --- Colisões com tiros ---
     for bullet in bullets[:]:
         for enemy in enemies[:]:
-            if bullet["rect"].colliderect(pygame.Rect(enemy['x'], enemy['y'], enemy['size'], enemy['size'])):
+            rect_enemy = pygame.Rect(enemy['x'], enemy['y'], enemy['size'], enemy['size'])
+            hitbox_enemy = rect_enemy.inflate(-rect_enemy.width * 0.45, -rect_enemy.height * 0.45)
+            if bullet["rect"].colliderect(hitbox_enemy):
                 enemies.remove(enemy)
                 if bullet["type"] == "bullet":
                     bullets.remove(bullet)
                 score += 10
                 break
 
-    # --- Aumenta dificuldade ---
-    new_speed_level = 1 + (score // difficulty_step) * 0.15
+    # --- Colisão da nave com inimigos ---
+    ship_hitbox = ship.rect.inflate(-ship.rect.width * 0.28, -ship.rect.height * 0.28)
+    for enemy in enemies[:]:
+        rect_enemy = pygame.Rect(enemy['x'], enemy['y'], enemy['size'], enemy['size'])
+        # Asteroides têm hitbox um pouco menor que o sprite
+        if enemy['type'] == 'asteroid':
+            hitbox_enemy = rect_enemy.inflate(-rect_enemy.width * 0.42, -rect_enemy.height * 0.42)
+        else:
+            hitbox_enemy = rect_enemy.inflate(-rect_enemy.width * 0.35, -rect_enemy.height * 0.35)
+
+        if ship_hitbox.colliderect(hitbox_enemy):
+            enemies.remove(enemy)
+            lives -= 1
+            if lives <= 0:
+                game_state = LOSE
+                return
+
+
+    # --- Dificuldade progressiva ---
+    new_speed_level = 1 + (score // difficulty_step) * 0.25
     if new_speed_level != game_speed:
         game_speed = new_speed_level
-        if ship:  # só aumenta velocidade se ship existir
-            ship.speed += 0.05
+        if ship:
+            ship.speed += 0.1
 
     # --- Desenho ---
     screen.fill(BLACK)
@@ -317,10 +371,20 @@ def draw_game():
         else:
             pygame.draw.rect(screen, ship.bullet_color, bullet["rect"], border_radius=4)
 
+    # --- Desenho dos inimigos ---
     for enemy in enemies:
         rect = pygame.Rect(enemy['x'], enemy['y'], enemy['size'], enemy['size'])
-        pygame.draw.rect(screen, (255, 100, 100), rect, border_radius=6)
-        pygame.draw.rect(screen, (255, 180, 180), rect, 3, border_radius=6)
+        img = enemy['img']
+
+        # Lixos giram continuamente
+        if enemy['type'] == 'trash':
+            enemy['angle'] = (enemy['angle'] + enemy['rotation_speed']) % 360
+            rotated_img = pygame.transform.rotate(img, enemy['angle'])
+            rotated_rect = rotated_img.get_rect(center=rect.center)
+            screen.blit(rotated_img, rotated_rect)
+        else:
+            rotated_rect = img.get_rect(center=rect.center)
+            screen.blit(img, rotated_rect)
 
     score_text = pygame.font.SysFont(None, 60, bold=True).render(f"Pontos: {score}", True, YELLOW)
     lives_text = pygame.font.SysFont(None, 60, bold=True).render(f"Vidas: {lives}", True, RED)
@@ -391,10 +455,10 @@ while True:
             elif event.key == pygame.K_SPACE:
                 idx = slots[selected_slot]["index"]
                 if idx == 1:
-                    ship = Ship(**ship1_cfg)
+                    ship = Ship(**ship2_cfg)
                     game_state = GAME
                 elif idx == 2:
-                    ship = Ship(**ship2_cfg)
+                    ship = Ship(**ship1_cfg)
                     game_state = GAME
 
         elif game_state == GAME and event.type == pygame.KEYDOWN:
@@ -422,9 +486,9 @@ while True:
                 reset_game()
                 # recria a nave selecionada
                 if selected_slot == 0:
-                    ship = Ship(**ship1_cfg)
-                elif selected_slot == 1:
                     ship = Ship(**ship2_cfg)
+                elif selected_slot == 1:
+                    ship = Ship(**ship1_cfg)
                 game_state = GAME
             elif event.key == pygame.K_2:
                 reset_game()
