@@ -9,7 +9,7 @@ pygame.init()
 # =========================================
 WIDTH, HEIGHT = 1920, 1080  # Full HD
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption('Parallax - Spaceship Arcade 2.5D')
+pygame.display.set_caption('Spaceship Arcade 2.5D')
 clock = pygame.time.Clock()
 spawn_margin = 100  # distância da borda superior e inferior para spawn de inimigos
 difficulty_step = 100  # pontos para aumentar dificuldade
@@ -166,7 +166,7 @@ def draw_menu():
     font_title = pygame.font.SysFont(None, 120, bold=True)
     font_btn = pygame.font.SysFont(None, 80)
 
-    title = font_title.render("PARALLAX SPACESHIP", True, YELLOW)
+    title = font_title.render("SPACE CLEANER", True, YELLOW)
     screen.blit(title, (WIDTH // 2 - title.get_width() // 2, HEIGHT // 4))
 
     start_rect = pygame.Rect(WIDTH // 2 - 200, HEIGHT // 2, 400, 80)
