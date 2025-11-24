@@ -2,9 +2,22 @@ import pygame
 import sys
 import random
 import math
+import os
 from time import perf_counter
 
 pygame.init()
+
+# =============================================================================
+# FUNÇÃO PARA CAMINHOS DE RECURSOS
+# =============================================================================
+
+def resource_path(relative_path):
+    """Retorna o caminho absoluto dos recursos"""
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 # =============================================================================
 # CONFIGURAÇÕES GLOBAIS
@@ -45,22 +58,22 @@ def load_image(path, scale=None, alpha=True):
 
 # Fundo do menu
 try:
-    menu_bg = load_image("assets/Menu.png", alpha=False)
+    menu_bg = load_image(resource_path("assets/Menu.png"), alpha=False)
 except:
     menu_bg = pygame.Surface((WIDTH, HEIGHT))
     menu_bg.fill((10, 10, 30))
 
 # Naves do jogador
-ship1_img = load_image("assets/Spaceship1.png")
-ship2_img = load_image("assets/Spaceship2.png")
+ship1_img = load_image(resource_path("assets/Spaceship1.png"))
+ship2_img = load_image(resource_path("assets/Spaceship2.png"))
 
 # Inimigos
-enemy_imgs = [load_image(f"assets/Asteroid{i}.png", (80, 80)) for i in range(1, 4)]
-trash_img = load_image("assets/TrashBag.png", (45, 45))
+enemy_imgs = [load_image(resource_path(f"assets/Asteroid{i}.png"), (80, 80)) for i in range(1, 4)]
+trash_img = load_image(resource_path("assets/TrashBag.png"), (45, 45))
 
 # Ícones da HUD
-life_icon = load_image("assets/Life.png", (50, 50))
-score_icon = load_image("assets/Trophy.png", (50, 50))
+life_icon = load_image(resource_path("assets/Life.png"), (50, 50))
+score_icon = load_image(resource_path("assets/Trophy.png"), (50, 50))
 
 # =============================================================================
 # CLASSE DA NAVE DO JOGADOR
